@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "ChatGPT to Notion",
+  "version": "1.0",
+  "description": "Save ChatGPT messages to Notion",
+  "permissions": [
+    "identity",
+    "storage",
+    "webNavigation",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://api.notion.com/*",
+    "https://chat.openai.com/*",
+    "https://chatgpt.com/*",
+    "https://*.notion.so/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "oauth2": {
+    "client_id": "23ad872b-594c-8068-a3ef-00376ee38e36",
+    "scopes": [
+      "https://api.notion.com/v1/oauth/authorize"
+    ]
+  }
+} 

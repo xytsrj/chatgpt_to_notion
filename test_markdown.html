@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Markdown Parser Test</title>
+</head>
+<body>
+    <h1>Markdown Parser Test</h1>
+    <div id="output"></div>
+    
+    <script>
+        // Copy the markdown parsing functions from content.js
+        function parseInlineMarkdown(text) {
+            console.log('Parsing inline markdown:', text);
+            
+            const richText = [];
+            let currentText = '';
+            let i = 0;
+            
+            while (i < text.length) {
+                // Check for bold (** or __)
+                if (text.substring(i, i + 2) === '**' || text.substring(i, i + 2) === '__') {
+                    if (currentText) {
+                        richText.push({ type: 'text', text: { content: currentText } });
+                        currentText = '';
+                    }
+                    
+                    i += 2;
+                    let boldText = '';
+                    while (i < text.length && text.substring(i, i + 2) !== '**' && text.substring(i, i + 2) !== '__') {
+                        boldText += text[i];
+                        i++;
+                    }
+                    
+                    if (i < text.length) {
+                        console.log(`Creating bold text: "${boldText}"`);
+                        richText.push({
+                            type: 'text',
+                            text: { content: boldText },
+                            annotations: { bold: true }
+                        });
+                        i += 2;
+                    } else {
+                        // Unclosed bold - treat as regular text
+                        richText.push({ type: 'text', text: { content: '**' + boldText } });
+                    }
+                } 
+                // Check for italic (* or _)
+                else if (text.substring(i, i + 1) === '*' || text.substring(i, i + 1) === '_') {
+                    if (currentText) {
+                        richText.push({ type: 'text', text: { content: currentText } });
+                        currentText = '';
+                    }
+                    
+                    i += 1;
+                    let italicText = '';
+                    while (i < text.length && text[i] !== '*' && text[i] !== '_') {
+                        italicText += text[i];
+                        i++;
+                    }
+                    
+                    if (i < text.length) {
+                        console.log(`Creating italic text: "${italicText}"`);
+                        richText.push({
+                            type: 'text',
+                            text: { content: italicText },
+                            annotations: { italic: true }
+                        });
+                        i += 1;
+                    } else {
+                        // Unclosed italic - treat as regular text
+                        richText.push({ type: 'text', text: { content: '*' + italicText } });
+                    }
+                } 
+                // Check for inline code (`)
+                else if (text.substring(i, i + 1) === '`') {
+                    if (currentText) {
+                        richText.push({ type: 'text', text: { content: currentText } });
+                        currentText = '';
+                    }
+                    
+                    i += 1;
+                    let codeText = '';
+                    while (i < text.length && text[i] !== '`') {
+                        codeText += text[i];
+                        i++;
+                    }
+                    
+                    if (i < text.length) {
+                        console.log(`Creating inline code: "${codeText}"`);
+                        richText.push({
+                            type: 'text',
+                            text: { content: codeText },
+                            annotations: { code: true }
+                        });
+                        i += 1;
+                    } else {
+                        // Unclosed code - treat as regular text
+                        richText.push({ type: 'text', text: { content: '`' + codeText } });
+                    }
+                } 
+                // Regular character
+                else {
+                    currentText += text[i];
+                    i++;
+                }
+            }
+            
+            if (currentText) {
+                richText.push({ type: 'text', text: { content: currentText } });
+            }
+            
+            console.log('Parsed rich text:', richText);
+            return richText;
+        }
+
+        function markdownToNotionBlocks(text) {
+            console.log('Processing markdown text:', text);
+            console.log('Text length:', text.length);
+            
+            const lines = text.split('\n');
+            const blocks = [];
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                const trimmedLine = line.trim();
+                
+                console.log(`Line ${i}: "${line}" (trimmed: "${trimmedLine}")`);
+                
+                if (!trimmedLine) {
+                    // Empty line - create paragraph
+                    blocks.push({
+                        object: 'block',
+                        type: 'paragraph',
+                        paragraph: {
+                            rich_text: []
+                        }
+                    });
+                    continue;
+                }
+                
+                // Check for headers (more flexible matching)
+                if (trimmedLine.match(/^#{1,6}\s/)) {
+                    const level = trimmedLine.match(/^(#{1,6})\s/)[1].length;
+                    const content = trimmedLine.replace(/^#{1,6}\s/, '');
+                    
+                    let blockType = 'heading_1';
+                    if (level === 2) blockType = 'heading_2';
+                    else if (level >= 3) blockType = 'heading_3';
+                    
+                    console.log(`Creating ${blockType} with content: "${content}"`);
+                    blocks.push({
+                        object: 'block',
+                        type: blockType,
+                        [blockType]: {
+                            rich_text: parseInlineMarkdown(content)
+                        }
+                    });
+                } else if (trimmedLine.match(/^[-*]\s/)) {
+                    // Bullet list (more flexible)
+                    const content = trimmedLine.replace(/^[-*]\s/, '');
+                    console.log(`Creating bulleted_list_item with content: "${content}"`);
+                    blocks.push({
+                        object: 'block',
+                        type: 'bulleted_list_item',
+                        bulleted_list_item: {
+                            rich_text: parseInlineMarkdown(content)
+                        }
+                    });
+                } else if (trimmedLine.match(/^\d+\.\s/)) {
+                    // Numbered list
+                    const content = trimmedLine.replace(/^\d+\.\s/, '');
+                    console.log(`Creating numbered_list_item with content: "${content}"`);
+                    blocks.push({
+                        object: 'block',
+                        type: 'numbered_list_item',
+                        numbered_list_item: {
+                            rich_text: parseInlineMarkdown(content)
+                        }
+                    });
+                } else if (trimmedLine.startsWith('```')) {
+                    // Code block
+                    let codeContent = '';
+                    let language = 'plain text';
+                    let j = i + 1;
+                    
+                    // Check if there's a language specified after ```
+                    const languageMatch = trimmedLine.match(/^```(\w+)?/);
+                    if (languageMatch && languageMatch[1]) {
+                        language = languageMatch[1];
+                    }
+                    
+                    console.log(`Starting code block with language: "${language}"`);
+                    
+                    while (j < lines.length && !lines[j].trim().startsWith('```')) {
+                        codeContent += lines[j] + '\n';
+                        j++;
+                    }
+                    i = j; // Skip to end of code block
+                    
+                    console.log(`Creating code block with content length: ${codeContent.length}`);
+                    blocks.push({
+                        object: 'block',
+                        type: 'code',
+                        code: {
+                            rich_text: [{ type: 'text', text: { content: codeContent.trim() } }],
+                            language: language
+                        }
+                    });
+                } else if (trimmedLine.startsWith('> ')) {
+                    // Quote
+                    const content = trimmedLine.substring(2);
+                    console.log(`Creating quote with content: "${content}"`);
+                    blocks.push({
+                        object: 'block',
+                        type: 'quote',
+                        quote: {
+                            rich_text: parseInlineMarkdown(content)
+                        }
+                    });
+                } else {
+                    // Regular paragraph with inline formatting
+                    console.log(`Creating paragraph with content: "${trimmedLine}"`);
+                    const richText = parseInlineMarkdown(trimmedLine);
+                    blocks.push({
+                        object: 'block',
+                        type: 'paragraph',
+                        paragraph: {
+                            rich_text: richText
+                        }
+                    });
+                }
+            }
+            
+            console.log('Generated blocks count:', blocks.length);
+            console.log('Final blocks structure:', JSON.stringify(blocks, null, 2));
+            return blocks;
+        }
+
+        // Test the functions
+        const testMarkdown = `# Main Heading
+
+This is a **bold** paragraph with *italic* text and \`inline code\`.
+
+## Subheading
+
+- Bullet point 1
+- Bullet point 2 with **bold** text
+
+1. Numbered item 1
+2. Numbered item 2
+
+> This is a quote block
+
+\`\`\`javascript
+function test() {
+    console.log("Hello World");
+}
+\`\`\`
+
+Regular paragraph with **bold**, *italic*, and \`code\` formatting.`;
+
+        console.log('Testing markdown parsing...');
+        const blocks = markdownToNotionBlocks(testMarkdown);
+        
+        document.getElementById('output').innerHTML = `
+            <h2>Test Results:</h2>
+            <pre>${JSON.stringify(blocks, null, 2)}</pre>
+        `;
+    </script>
+</body>
+</html> 
